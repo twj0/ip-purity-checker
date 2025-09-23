@@ -10,6 +10,32 @@ from lxml import html
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def normalize_api_status(response: Dict, provider: str = '') -> Dict:
+    """
+    统一API响应状态码格式
+
+    Args:
+        response: API响应字典
+        provider: API提供者名称
+
+    Returns:
+        标准化后的响应字典
+    """
+    if not response or not isinstance(response, dict):
+        return response
+
+    # ProxyCheck.io返回'ok'状态，需要转换为'success'
+    if provider.lower() == 'proxycheck' and response.get('status') == 'ok':
+        response = response.copy()  # 避免修改原始数据
+        response['status'] = 'success'
+
+    # 确保ip-api.com有正确的状态字段
+    elif provider.lower() == 'ip-api' and 'status' not in response:
+        response = response.copy()
+        response['status'] = 'success' if response.get('query') else 'fail'
+
+    return response
+
 # --- Core IP Information Fetching ---
 
 def fetch_ip_info(ip: str, proxy: Optional[Dict] = None, timeout: int = 10, api_key: Optional[str] = None) -> Optional[Dict]:
@@ -19,18 +45,28 @@ def fetch_ip_info(ip: str, proxy: Optional[Dict] = None, timeout: int = 10, api_
     """
     # 首先尝试ProxyCheck.io（专业的代理检测）
     result = _fetch_ip_info_proxycheck(ip, api_key, timeout)
-    if result and result.get('status') == 'success':
-        return result
+    if result:
+        # 标准化状态码
+        result = normalize_api_status(result, 'proxycheck')
+        if result.get('status') == 'success':
+            return result
 
     # 回退到IPinfo.io
     logger.debug(f'ProxyCheck failed for {ip}, falling back to IPinfo.io')
     result = _fetch_ip_info_ipinfo(ip, timeout)
-    if result and result.get('status') == 'success':
-        return result
+    if result:
+        # 标准化状态码
+        result = normalize_api_status(result, 'ipinfo')
+        if result.get('status') == 'success':
+            return result
 
     # 最后回退到ip-api.com
     logger.debug(f'IPinfo failed for {ip}, falling back to ip-api.com')
-    return _fetch_ip_info_legacy(ip, proxy, timeout)
+    result = _fetch_ip_info_legacy(ip, proxy, timeout)
+    if result:
+        # 标准化状态码
+        result = normalize_api_status(result, 'ip-api')
+    return result
 
 def _fetch_ip_info_proxycheck(ip: str, api_key: Optional[str] = None, timeout: int = 10) -> Optional[Dict]:
     """使用ProxyCheck.io获取IP信息（专业代理检测）"""

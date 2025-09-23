@@ -3175,12 +3175,18 @@ async function checkWithProxyCheck(ip, apiKey) {
         throw new Error(data.message || 'ProxyCheck API错误');
     }
 
+    // 检查API响应状态，ProxyCheck.io成功时返回'ok'
+    if (data.status !== 'ok') {
+        throw new Error(`ProxyCheck API状态异常: ${data.status}`);
+    }
+
     const ipData = data[ip];
     if (!ipData) {
         throw new Error('无效的API响应');
     }
 
     return {
+        status: 'success',  // 标准化状态码
         ip: ip,
         isPure: ipData.proxy === 'no',
         riskScore: ipData.risk || 0,
